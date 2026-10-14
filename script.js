@@ -418,6 +418,23 @@ function redrawReferenceImages() {
   const hd = elements.referenceHemdCanvas;
   referenceXrayCtx.clearRect(0, 0, xr.width, xr.height);
   referenceXrayCtx.drawImage(originalCanvas, 0, 0);
+
+  // Equaliza apenas as regiões dos BBs do relatório de referência.
+  // A imagem original permanece intacta, e as alterações não são gravadas.
+  // A mesma equalização histogrâmica já usada na imagem Raio-X interativa
+  // é aplicada separadamente a cada BB, na ordem em que aparece no relatório.
+  for (const box of state.referenceBoxes) {
+    const x1 = Math.max(0, Math.min(xr.width, Math.floor(box.x)));
+    const y1 = Math.max(0, Math.min(xr.height, Math.floor(box.y)));
+    const x2 = Math.max(0, Math.min(xr.width, Math.ceil(box.x + box.width)));
+    const y2 = Math.max(0, Math.min(xr.height, Math.ceil(box.y + box.height)));
+    const width = x2 - x1;
+    const height = y2 - y1;
+    if (width <= 0 || height <= 0) continue;
+    const region = referenceXrayCtx.getImageData(x1, y1, width, height);
+    referenceXrayCtx.putImageData(equalizeRegion(region), x1, y1);
+  }
+
   referenceHemdCtx.clearRect(0, 0, hd.width, hd.height);
   referenceHemdCtx.drawImage(hemdOriginalImage, 0, 0, hd.width, hd.height);
   drawReferenceBoxes(referenceXrayCtx, state.referenceBoxes, 1, 1, xr.width);
