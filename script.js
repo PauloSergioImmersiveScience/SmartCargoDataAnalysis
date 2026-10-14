@@ -412,33 +412,58 @@ function drawReferenceBoxes(context, boxes, scaleX, scaleY, width) {
   context.restore();
 }
 
+// Equalização histogrâmica de luminância (8 bits) somente dentro do BB.
+// Utiliza a imagem ORIGINAL em cada BB para que os resultados sejam fixos,
+// mesmo quando caixas se sobrepõem ou se usa Passo Anterior.
+function equalizeReferenceBox(context, box, sourceCanvas) {
+  const x1 = Math.max(0, Math.min(sourceCanvas.width, Math.floor(box.x)));
+  const y1 = Math.max(0, Math.min(sourceCanvas.height, Math.floor(box.y)));
+  const x2 = Math.max(0, Math.min(sourceCanvas.width, Math.ceil(box.x + box.width)));
+  const y2 = Math.max(0, Math.min(sourceCanvas.height, Math.ceil(box.y + box.height)));
+  const w = x2 - x1, h = y2 - y1;
+  if (w <= 0 || h <= 0) return false;
+  const source = sourceCanvas.getContext("2d", { willReadFrequently: true }).getImageData(x1, y1, w, h);
+  const output = new ImageData(new Uint8ClampedArray(source.data), w, h);
+  const histogram = new Uint32Array(256);
+  const intensities = new Uint8Array(w * h);
+  for (let i = 0, p = 0; i < source.data.length; i += 4, p++) {
+    const gray = Math.round(0.299 * source.data[i] + 0.587 * source.data[i + 1] + 0.114 * source.data[i + 2]);
+    intensities[p] = gray;
+    histogram[gray]++;
+  }
+  let sum = 0, cdfMin = 0;
+  const lut = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    sum += histogram[i];
+    if (!cdfMin && histogram[i]) cdfMin = sum;
+    lut[i] = (w * h > cdfMin) ? Math.round(255 * (sum - cdfMin) / (w * h - cdfMin)) : i;
+  }
+  for (let p = 0, i = 0; p < intensities.length; p++, i += 4) {
+    // Imagem de raio-X em tons de cinza: equalização conforme cv2.equalizeHist.
+    output.data[i] = output.data[i + 1] = output.data[i + 2] = lut[intensities[p]];
+  }
+  context.putImageData(output, x1, y1);
+  return true;
+}
+
 function redrawReferenceImages() {
   if (state.currentPosition < 0) return;
   const xr = elements.referenceXrayCanvas;
   const hd = elements.referenceHemdCanvas;
   referenceXrayCtx.clearRect(0, 0, xr.width, xr.height);
   referenceXrayCtx.drawImage(originalCanvas, 0, 0);
-
-  // Equaliza apenas as regiões dos BBs do relatório de referência.
-  // A imagem original permanece intacta, e as alterações não são gravadas.
-  // A mesma equalização histogrâmica já usada na imagem Raio-X interativa
-  // é aplicada separadamente a cada BB, na ordem em que aparece no relatório.
+  let processed = 0;
   for (const box of state.referenceBoxes) {
-    const x1 = Math.max(0, Math.min(xr.width, Math.floor(box.x)));
-    const y1 = Math.max(0, Math.min(xr.height, Math.floor(box.y)));
-    const x2 = Math.max(0, Math.min(xr.width, Math.ceil(box.x + box.width)));
-    const y2 = Math.max(0, Math.min(xr.height, Math.ceil(box.y + box.height)));
-    const width = x2 - x1;
-    const height = y2 - y1;
-    if (width <= 0 || height <= 0) continue;
-    const region = referenceXrayCtx.getImageData(x1, y1, width, height);
-    referenceXrayCtx.putImageData(equalizeRegion(region), x1, y1);
+    if (equalizeReferenceBox(referenceXrayCtx, box, originalCanvas)) processed++;
   }
-
   referenceHemdCtx.clearRect(0, 0, hd.width, hd.height);
   referenceHemdCtx.drawImage(hemdOriginalImage, 0, 0, hd.width, hd.height);
   drawReferenceBoxes(referenceXrayCtx, state.referenceBoxes, 1, 1, xr.width);
   drawReferenceBoxes(referenceHemdCtx, state.referenceBoxes, hd.width / xr.width, hd.height / xr.height, hd.width);
+  const n = state.referenceBoxes.length;
+  elements.referenceXrayPlaceholder.hidden = true;
+  const diagnostic = document.querySelector("#referenceDiagnostic");
+  if (diagnostic) diagnostic.textContent = `Relatório: ${n} BB(s) encontrados; ${processed} região(ões) equalizada(s).` + (n === 0 ? " Confira a pasta dos relatórios e o nome Relatorio<i>.txt." : "");
 }
 
 async function loadItem(position, restored = null) {
@@ -488,7 +513,7 @@ async function loadItem(position, restored = null) {
   redrawXray();
   await loadReferenceReport(index);
   updateControls();
-  setStatus(`Imagem${index} carregada com sucesso.`, "success");
+  setStatus(`Imagem${index} carregada. Relatório de referência: ${state.referenceBoxes.length} BB(s).`, state.referenceBoxes.length ? "success" : "info");
 }
 
 function equalizeRegion(imageData) {
@@ -1019,7 +1044,7 @@ elements.reportsPath.addEventListener("click", async () => {
     if (state.currentPosition >= 0) {
       await loadReferenceReport(state.items[state.currentPosition].index);
     }
-    setStatus(`Pasta de relatórios ${handle.name} selecionada.`, "success");
+    setStatus(`Pasta ${handle.name} selecionada. ${state.referenceBoxes.length} BB(s) de referência encontrados na imagem atual.`, "success");
   } catch (error) {
     if (error.name !== "AbortError") setStatus(`Erro ao ler relatórios: ${error.message}`, "error");
   }
