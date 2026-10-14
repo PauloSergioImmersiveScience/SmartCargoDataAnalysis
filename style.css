@@ -266,3 +266,21 @@ button:disabled { opacity: .42; cursor: not-allowed; }
 .reference-panel { cursor: default; }
 .report-section textarea[readonly] { background: #f8fafc; cursor: default; }
 .footer-actions { grid-template-columns: 220px 1fr; }
+
+/* Legenda fixa abaixo do relatório, proporcional à largura disponível */
+.hemd-palette-section {
+  margin-top: 22px;
+  width: 100%;
+  text-align: center;
+}
+.hemd-palette-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 1068px;
+  margin: 0 auto;
+  object-fit: contain;
+}
+/* Rodapé sem o botão Configuração */
+.footer-actions { display: flex; justify-content: flex-end; }
+.footer-actions .current-item { justify-self: auto; }
