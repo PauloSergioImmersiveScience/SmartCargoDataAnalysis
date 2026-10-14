@@ -20,8 +20,6 @@ const elements = {
   currentItem: document.querySelector("#currentItem"),
   xrayCanvas: document.querySelector("#xrayCanvas"),
   xrayPlaceholder: document.querySelector("#xrayPlaceholder"),
-  hemdCanvas: document.querySelector("#hemdCanvas"),
-  hemdPlaceholder: document.querySelector("#hemdPlaceholder"),
   dialog: document.querySelector("#confirmDialog"),
   initialChoiceDialog: document.querySelector("#initialChoiceDialog"),
   chooseReviewedButton: document.querySelector("#chooseReviewedButton"),
@@ -31,7 +29,6 @@ const elements = {
 };
 
 const ctx = elements.xrayCanvas.getContext("2d", { willReadFrequently: true });
-const hemdCtx = elements.hemdCanvas.getContext("2d");
 const referenceXrayCtx = elements.referenceXrayCanvas.getContext("2d");
 const referenceHemdCtx = elements.referenceHemdCanvas.getContext("2d");
 const originalCanvas = document.createElement("canvas");
@@ -492,8 +489,6 @@ async function loadItem(position, restored = null) {
   originalCtx.drawImage(xrayImage, 0, 0);
   elements.xrayCanvas.width = xrayImage.naturalWidth;
   elements.xrayCanvas.height = xrayImage.naturalHeight;
-  elements.hemdCanvas.width = hemdOriginalImage.naturalWidth;
-  elements.hemdCanvas.height = hemdOriginalImage.naturalHeight;
 
   elements.referenceXrayCanvas.width = xrayImage.naturalWidth;
   elements.referenceXrayCanvas.height = xrayImage.naturalHeight;
@@ -504,8 +499,6 @@ async function loadItem(position, restored = null) {
 
   elements.xrayCanvas.style.display = "block";
   elements.xrayPlaceholder.hidden = true;
-  elements.hemdCanvas.style.display = "block";
-  elements.hemdPlaceholder.hidden = true;
   elements.referenceXrayCanvas.style.display = "block";
   elements.referenceXrayPlaceholder.hidden = true;
   elements.referenceHemdCanvas.style.display = "block";
@@ -558,37 +551,6 @@ function redrawXray() {
     ctx.fillText(`BB ${i + 1}`, box.x + 5, Math.max(20, box.y - 7));
   });
   ctx.restore();
-  redrawHemd();
-}
-
-function redrawHemd() {
-  if (state.currentPosition < 0) return;
-  const hemdWidth = elements.hemdCanvas.width;
-  const hemdHeight = elements.hemdCanvas.height;
-  const xrayWidth = elements.xrayCanvas.width;
-  const xrayHeight = elements.xrayCanvas.height;
-  if (!hemdWidth || !hemdHeight || !xrayWidth || !xrayHeight) return;
-
-  hemdCtx.clearRect(0, 0, hemdWidth, hemdHeight);
-  hemdCtx.drawImage(hemdOriginalImage, 0, 0, hemdWidth, hemdHeight);
-
-  const boxesToDraw = state.draftBox ? [...state.boxes, state.draftBox] : state.boxes;
-  const scaleX = hemdWidth / xrayWidth;
-  const scaleY = hemdHeight / xrayHeight;
-  hemdCtx.save();
-  hemdCtx.lineWidth = Math.max(2, hemdWidth / 500);
-  hemdCtx.font = `bold ${Math.max(15, hemdWidth / 55)}px Segoe UI`;
-  boxesToDraw.forEach((box, i) => {
-    const x = box.x * scaleX;
-    const y = box.y * scaleY;
-    const width = box.width * scaleX;
-    const height = box.height * scaleY;
-    hemdCtx.strokeStyle = state.draftBox && i === boxesToDraw.length - 1 ? "#facc15" : "#ef4444";
-    hemdCtx.strokeRect(x, y, width, height);
-    hemdCtx.fillStyle = hemdCtx.strokeStyle;
-    hemdCtx.fillText(`BB ${i + 1}`, x + 5, Math.max(20, y - 7));
-  });
-  hemdCtx.restore();
 }
 
 function pointerPosition(event) {
@@ -625,23 +587,6 @@ function createBoxPreview(boxIndex, source) {
   const box = state.boxes[boxIndex];
   const preview = document.createElement("canvas");
 
-  if (source === "hemd") {
-    const scaleX = elements.hemdCanvas.width / elements.xrayCanvas.width;
-    const scaleY = elements.hemdCanvas.height / elements.xrayCanvas.height;
-    const sourceX = Math.round(box.x * scaleX);
-    const sourceY = Math.round(box.y * scaleY);
-    const sourceWidth = Math.max(1, Math.round(box.width * scaleX));
-    const sourceHeight = Math.max(1, Math.round(box.height * scaleY));
-    preview.width = sourceWidth;
-    preview.height = sourceHeight;
-    preview.getContext("2d").drawImage(
-      hemdOriginalImage,
-      sourceX, sourceY, sourceWidth, sourceHeight,
-      0, 0, sourceWidth, sourceHeight
-    );
-    return preview;
-  }
-
   preview.width = Math.max(1, Math.round(box.width));
   preview.height = Math.max(1, Math.round(box.height));
   const previewContext = preview.getContext("2d", { willReadFrequently: true });
@@ -658,7 +603,7 @@ function createBoxPreview(boxIndex, source) {
 function openBoxPreview(boxIndex, source) {
   const preview = createBoxPreview(boxIndex, source);
   const imageUrl = preview.toDataURL("image/png");
-  const sourceLabel = source === "hemd" ? "HEMD" : "Raio-X";
+  const sourceLabel = "Raio-X";
   const popupWidth = Math.min(1100, Math.max(520, preview.width + 40));
   const popupHeight = Math.min(850, Math.max(420, preview.height + 90));
   const popup = window.open("", `SmartScanCargo_BB${boxIndex + 1}_${source}`, `width=${popupWidth},height=${popupHeight},resizable=yes,scrollbars=no`);
@@ -925,15 +870,6 @@ elements.xrayCanvas.addEventListener("contextmenu", event => {
   openBoxPreview(boxIndex, "xray");
 });
 
-elements.hemdCanvas.addEventListener("contextmenu", event => {
-  if (state.currentPosition < 0) return;
-  const scaleX = elements.hemdCanvas.width / elements.xrayCanvas.width;
-  const scaleY = elements.hemdCanvas.height / elements.xrayCanvas.height;
-  const boxIndex = findBoxAtPosition(canvasPosition(event, elements.hemdCanvas), scaleX, scaleY);
-  if (boxIndex < 0) return;
-  event.preventDefault();
-  openBoxPreview(boxIndex, "hemd");
-});
 
 function normalizedBox(start, end) {
   const x = Math.min(start.x, end.x);
@@ -1068,11 +1004,8 @@ function clearDisplayedState(clearFolder = true) {
     elements.datasetPath.classList.remove("selected");
   }
   ctx.clearRect(0, 0, elements.xrayCanvas.width, elements.xrayCanvas.height);
-  hemdCtx.clearRect(0, 0, elements.hemdCanvas.width, elements.hemdCanvas.height);
   elements.xrayCanvas.style.display = "none";
   elements.xrayPlaceholder.hidden = false;
-  elements.hemdCanvas.style.display = "none";
-  elements.hemdPlaceholder.hidden = false;
   elements.reportText.value = "";
   state.referenceBoxes = [];
   state.referenceText = "";
